@@ -17,40 +17,35 @@
  * specific language governing permissions and limitations
  * under the License.
  *
- */
+*/
 
 (function () {
-    const exec = require('cordova/exec');
-    const channel = require('cordova/channel');
-    const modulemapper = require('cordova/modulemapper');
-    const urlutil = require('cordova/urlutil');
+    // special patch to correctly work on Ripple emulator (CB-9760)
+    if (window.parent && !!window.parent.ripple) { // https://gist.github.com/triceam/4658021
+        module.exports = window.open.bind(window); // fallback to default window.open behaviour
+        return;
+    }
+
+    var exec = require('cordova/exec');
+    var channel = require('cordova/channel');
+    var modulemapper = require('cordova/modulemapper');
+    var urlutil = require('cordova/urlutil');
 
     function InAppBrowser () {
         this.channels = {
-            beforeload: channel.create('beforeload'),
-            loadstart: channel.create('loadstart'),
-            loadstop: channel.create('loadstop'),
-            loaderror: channel.create('loaderror'),
-            exit: channel.create('exit'),
-            customscheme: channel.create('customscheme'),
-            message: channel.create('message'),
-            download: channel.create('download')
+            'loadstart': channel.create('loadstart'),
+            'loadstop': channel.create('loadstop'),
+            'loaderror': channel.create('loaderror'),
+            'exit': channel.create('exit'),
+            'customscheme': channel.create('customscheme')
         };
     }
 
     InAppBrowser.prototype = {
         _eventHandler: function (event) {
-            if (event && event.type in this.channels) {
-                if (event.type === 'beforeload') {
-                    this.channels[event.type].fire(event, this._loadAfterBeforeload);
-                } else {
-                    this.channels[event.type].fire(event);
-                }
+            if (event && (event.type in this.channels)) {
+                this.channels[event.type].fire(event);
             }
-        },
-        _loadAfterBeforeload: function (strUrl) {
-            strUrl = urlutil.makeAbsolute(strUrl);
-            exec(null, null, 'InAppBrowser', 'loadAfterBeforeload', [strUrl]);
         },
         close: function (eventname) {
             exec(null, null, 'InAppBrowser', 'close', []);
@@ -90,29 +85,25 @@
             } else {
                 throw new Error('insertCSS requires exactly one of code or file to be specified');
             }
-        },
-
-        addDownloadListener: function (success, error) {
-            exec(success, error, 'InAppBrowser', 'downloadListener');
         }
     };
 
     module.exports = function (strUrl, strWindowName, strWindowFeatures, callbacks) {
         // Don't catch calls that write to existing frames (e.g. named iframes).
         if (window.frames && window.frames[strWindowName]) {
-            const origOpenFunc = modulemapper.getOriginalSymbol(window, 'open');
+            var origOpenFunc = modulemapper.getOriginalSymbol(window, 'open');
             return origOpenFunc.apply(window, arguments);
         }
 
         strUrl = urlutil.makeAbsolute(strUrl);
-        const iab = new InAppBrowser();
+        var iab = new InAppBrowser();
 
         callbacks = callbacks || {};
-        for (const callbackName in callbacks) {
+        for (var callbackName in callbacks) {
             iab.addEventListener(callbackName, callbacks[callbackName]);
         }
 
-        const cb = function (eventname) {
+        var cb = function (eventname) {
             iab._eventHandler(eventname);
         };
 
